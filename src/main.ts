@@ -1,4 +1,6 @@
 import { NestFactory } from '@nestjs/core';
+import { AgentPolicyService } from './ai/agent-policy.service';
+import { AgentRouterService } from './ai/agent-router.service';
 import { AppModule } from './app.module';
 import { AppLogger } from './common/logger/app-logger.service';
 import { ConfigService } from './config/config.service';
@@ -8,7 +10,13 @@ import { PlannerService } from './planner/planner.service';
 import { TrelloService } from './trello/trello.service';
 import { WorkerService } from './worker/worker.service';
 
-type CliCommand = 'setupTrello' | 'planEpics' | 'runWorker';
+type CliCommand =
+  | 'setupTrello'
+  | 'planEpics'
+  | 'runWorker'
+  | 'aiRoles'
+  | 'aiTestRouting'
+  | 'aiTestManualQa';
 
 const REQUIRED_LISTS = ['Epic', 'Todo', 'In Progress', 'Review', 'Done', 'Failed'];
 const EPIC_GENERATED_COMMENT = 'EpicFoundry: tasks generated';
@@ -57,7 +65,23 @@ function resolveCliCommand(args: string[]): CliCommand | null {
     return 'runWorker';
   }
 
+  if (normalized === 'airoles') {
+    return 'aiRoles';
+  }
+
+  if (normalized === 'aitestrouting') {
+    return 'aiTestRouting';
+  }
+
+  if (normalized === 'aitestmanualqa') {
+    return 'aiTestManualQa';
+  }
+
   return null;
+}
+
+function commandNeedsTrelloConfig(command: CliCommand): boolean {
+  return command === 'setupTrello' || command === 'planEpics' || command === 'runWorker';
 }
 
 async function runCliCommand(command: CliCommand): Promise<void> {
@@ -67,7 +91,9 @@ async function runCliCommand(command: CliCommand): Promise<void> {
   const logger = app.get(AppLogger);
 
   try {
-    ensureTrelloConfig(app.get(ConfigService));
+    if (commandNeedsTrelloConfig(command)) {
+      ensureTrelloConfig(app.get(ConfigService));
+    }
 
     if (command === 'setupTrello') {
       await runSetupTrello(app.get(TrelloService), logger);
@@ -92,6 +118,21 @@ async function runCliCommand(command: CliCommand): Promise<void> {
         `Worker finished. Processed=${summary.processed}, Succeeded=${summary.succeeded}, Failed=${summary.failed}`,
         'Worker',
       );
+      return;
+    }
+
+    if (command === 'aiRoles') {
+      await runAiRoles(app.get(AgentPolicyService), logger);
+      return;
+    }
+
+    if (command === 'aiTestRouting') {
+      await runAiTestRouting(app.get(AgentRouterService), logger);
+      return;
+    }
+
+    if (command === 'aiTestManualQa') {
+      await runAiTestManualQa(app.get(AgentRouterService), logger);
     }
   } catch (error) {
     if (error instanceof Error) {
@@ -210,6 +251,70 @@ async function runPlanEpics(
   }
 
   logger.log(`Done. Planned=${planned}, Skipped=${skipped}`, 'Plan');
+}
+
+async function runAiRoles(
+  policyService: AgentPolicyService,
+  logger: AppLogger,
+): Promise<void> {
+  const lines = policyService.getSummaryLines();
+
+  logger.log('Configured AI role routes:', 'AI-Roles');
+  for (const line of lines) {
+    logger.log(line, 'AI-Roles');
+  }
+}
+
+async function runAiTestRouting(
+  routerService: AgentRouterService,
+  logger: AppLogger,
+): Promise<void> {
+  const routes = routerService.getAllRoutes();
+
+  logger.log('Routing test for all roles:', 'AI-TestRouting');
+  for (const route of routes) {
+    logger.log(
+      `${route.role} -> ${route.provider} / ${route.model}`,
+      'AI-TestRouting',
+    );
+  }
+
+  const plannerResult = await routerService.runPlannerDemo('User profile editing');
+  logger.log(`Planner demo produced ${plannerResult.length} task(s)`, 'AI-TestRouting');
+
+  const backendResult = await routerService.runWorkerDemo('backend_worker');
+  logger.log(`Backend worker demo: ${backendResult.status}`, 'AI-TestRouting');
+
+  const frontendResult = await routerService.runWorkerDemo('frontend_worker');
+  logger.log(`Frontend worker demo: ${frontendResult.status}`, 'AI-TestRouting');
+}
+
+async function runAiTestManualQa(
+  routerService: AgentRouterService,
+  logger: AppLogger,
+): Promise<void> {
+  const report = await routerService.runManualQaDemo({
+    feature: 'User profile editing',
+  });
+
+  logger.log(`Status: ${report.status}`, 'AI-ManualQA');
+  logger.log(`Summary: ${report.summary}`, 'AI-ManualQA');
+
+  for (const flow of report.exploredFlows) {
+    logger.log(`Explored flow: ${flow}`, 'AI-ManualQA');
+  }
+
+  if (report.findings.length === 0) {
+    logger.log('No findings reported', 'AI-ManualQA');
+    return;
+  }
+
+  for (const finding of report.findings) {
+    logger.log(
+      `${finding.severity.toUpperCase()} - ${finding.title} | Expected: ${finding.expected} | Actual: ${finding.actual}`,
+      'AI-ManualQA',
+    );
+  }
 }
 
 function ensureTrelloConfig(configService: ConfigService): void {

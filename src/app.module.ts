@@ -8,6 +8,7 @@ import { ParserModule } from './parser/parser.module';
 import { PlannerModule } from './planner/planner.module';
 import { TrelloModule } from './trello/trello.module';
 import { WorkerModule } from './worker/worker.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { WorkerModule } from './worker/worker.module';
     PlannerModule,
     TrelloModule,
     WorkerModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

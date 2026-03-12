@@ -83,18 +83,38 @@ From `EPIC: User profile editing`, planner generates:
 npm run trello:setup
 npm run trello:plan
 npm run run:worker
+npm run ai:roles
+npm run ai:test-routing
+npm run ai:test-manual-qa
 ```
 
 - `trello:setup`: validates board access, ensures lists, and seeds a sample epic when needed
 - `trello:plan`: reads epic cards and creates generated task cards in `Todo`
 - `run:worker`: processes cards in `Todo` and moves them through workflow lists
+- `ai:roles`: prints role -> provider/model policy mappings
+- `ai:test-routing`: runs a mock routing test across all AI roles
+- `ai:test-manual-qa`: runs the mock manual QA agent and prints findings
 
 You can also run commands directly:
 
 ```bash
 npm run start:dev -- setupTrello
 npm run start:dev -- planEpics
+npm run start:dev -- aiRoles
+npm run start:dev -- aiTestRouting
+npm run start:dev -- aiTestManualQa
 ```
+
+## AI roles
+
+EpicFoundry routes work by `role` instead of using one model for everything. Each role maps to a provider and model policy, for example:
+
+- `backend_worker`
+- `frontend_worker`
+- `manual_qa_agent`
+- `reviewer`
+
+Current AI providers are mock, provider-agnostic implementations used to validate architecture and routing behavior before adding real API integrations.
 
 ## Run project
 

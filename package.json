@@ -20,7 +20,10 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "run:worker": "nest start -- runWorker",
     "trello:setup": "nest start -- setupTrello",
-    "trello:plan": "nest start -- planEpics"
+    "trello:plan": "nest start -- planEpics",
+    "ai:roles": "nest start -- aiRoles",
+    "ai:test-routing": "nest start -- aiTestRouting",
+    "ai:test-manual-qa": "nest start -- aiTestManualQa"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
