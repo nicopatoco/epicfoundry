@@ -38,9 +38,11 @@ TRELLO_BOARD_ID=your_board_id
 
 Expected Trello list names:
 
+- `Epic`
 - `Todo`
 - `In Progress`
 - `Review`
+- `Done`
 - `Failed`
 
 ## Epic format
@@ -70,22 +72,29 @@ Acceptance:
 
 From `EPIC: User profile editing`, planner generates:
 
-- `User profile editing - API contract`
-- `User profile editing - Backend endpoint`
-- `User profile editing - Frontend form`
-- `User profile editing - E2E verification`
+- `User profile editing — API contract`
+- `User profile editing — Backend endpoint`
+- `User profile editing — Frontend form`
+- `User profile editing — E2E verification`
 
 ## CLI commands
 
 ```bash
-npm run sync:epics
-npm run plan:tasks
+npm run trello:setup
+npm run trello:plan
 npm run run:worker
 ```
 
-- `sync:epics`: fetches and parses epic cards from Trello
-- `plan:tasks`: fetches epics and prints generated tasks
+- `trello:setup`: validates board access, ensures lists, and seeds a sample epic when needed
+- `trello:plan`: reads epic cards and creates generated task cards in `Todo`
 - `run:worker`: processes cards in `Todo` and moves them through workflow lists
+
+You can also run commands directly:
+
+```bash
+npm run start:dev -- setupTrello
+npm run start:dev -- planEpics
+```
 
 ## Run project
 

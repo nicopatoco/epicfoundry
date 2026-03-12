@@ -18,6 +18,6 @@ export class AppLogger {
   }
 
   private format(context: string, message: string): string {
-    return `[EpicFoundry][${context}] ${message}`;
+    return `[${context}] ${message}`;
   }
 }

@@ -1,19 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import axios, { AxiosError, AxiosInstance } from 'axios';
-import { ConfigService } from '../config/config.service';
 import { AppLogger } from '../common/logger/app-logger.service';
+import { ConfigService } from '../config/config.service';
+import {
+  EnsureListsResult,
+  TrelloBoard,
+  TrelloCard,
+  TrelloCommentAction,
+  TrelloList,
+} from './trello.types';
 
-export interface TrelloList {
-  id: string;
-  name: string;
-}
-
-export interface TrelloCard {
-  id: string;
-  name: string;
-  desc: string;
-  idList: string;
-}
+export type { EnsureListsResult, TrelloBoard, TrelloCard, TrelloList } from './trello.types';
 
 @Injectable()
 export class TrelloService {
@@ -29,81 +26,170 @@ export class TrelloService {
     });
   }
 
-  async getBoardLists(): Promise<TrelloList[]> {
+  async validateBoardAccess(): Promise<boolean> {
     try {
-      const { boardId } = this.configService.getTrelloConfig();
-      const response = await this.http.get<TrelloList[]>(`/boards/${boardId}/lists`, {
-        params: this.authParams,
-      });
-
-      return response.data;
+      await this.getBoard();
+      return true;
     } catch (error) {
-      this.handleError('Failed to fetch board lists', error);
-      return [];
-    }
-  }
-
-  async getCardsByListName(listName: string): Promise<TrelloCard[]> {
-    const list = await this.findListByName(listName);
-
-    if (!list) {
-      this.logger.warn(`List not found: ${listName}`, 'TrelloService');
-      return [];
-    }
-
-    try {
-      const response = await this.http.get<TrelloCard[]>(`/lists/${list.id}/cards`, {
-        params: this.authParams,
-      });
-
-      return response.data;
-    } catch (error) {
-      this.handleError(`Failed to fetch cards for list ${listName}`, error);
-      return [];
-    }
-  }
-
-  async getEpicCards(): Promise<TrelloCard[]> {
-    try {
-      const { boardId } = this.configService.getTrelloConfig();
-      const response = await this.http.get<TrelloCard[]>(`/boards/${boardId}/cards`, {
-        params: this.authParams,
-      });
-
-      return response.data.filter((card) =>
-        card.name.trim().toUpperCase().startsWith('EPIC:'),
-      );
-    } catch (error) {
-      this.handleError('Failed to fetch epic cards', error);
-      return [];
-    }
-  }
-
-  async getTodoCards(): Promise<TrelloCard[]> {
-    return this.getCardsByListName('Todo');
-  }
-
-  async moveCardToList(cardId: string, listName: string): Promise<boolean> {
-    const list = await this.findListByName(listName);
-
-    if (!list) {
-      this.logger.warn(`Cannot move card. List not found: ${listName}`, 'TrelloService');
+      this.handleError('Failed to validate board access', error);
       return false;
     }
+  }
+
+  async getBoard(): Promise<TrelloBoard> {
+    const { boardId } = this.configService.getTrelloConfig();
 
     try {
-      await this.http.put(
-        `/cards/${cardId}`,
-        {},
+      return await this.get<TrelloBoard>(`/boards/${boardId}`, {
+        fields: 'id,name,url',
+      });
+    } catch (error) {
+      this.throwError('Failed to fetch board', error);
+    }
+  }
+
+  async getLists(): Promise<TrelloList[]> {
+    const { boardId } = this.configService.getTrelloConfig();
+
+    try {
+      return await this.get<TrelloList[]>(`/boards/${boardId}/lists`, {
+        fields: 'id,name,pos',
+      });
+    } catch (error) {
+      this.throwError('Failed to fetch board lists', error);
+    }
+  }
+
+  async ensureLists(listNames: string[]): Promise<EnsureListsResult> {
+    const existingLists = await this.getLists();
+    const existingByName = new Map(
+      existingLists.map((list) => [list.name.trim().toLowerCase(), list]),
+    );
+
+    const created: TrelloList[] = [];
+
+    for (const listName of listNames) {
+      const normalized = listName.trim().toLowerCase();
+      if (existingByName.has(normalized)) {
+        continue;
+      }
+
+      const newList = await this.createList(listName);
+      created.push(newList);
+      existingByName.set(normalized, newList);
+    }
+
+    return {
+      existing: existingLists,
+      created,
+      all: [...existingByName.values()],
+    };
+  }
+
+  async getCardsInList(listName: string): Promise<TrelloCard[]> {
+    const list = await this.getListByName(listName);
+
+    if (!list) {
+      throw new Error(`Trello list not found: ${listName}`);
+    }
+
+    try {
+      return await this.get<TrelloCard[]>(`/lists/${list.id}/cards`, {
+        fields: 'id,name,desc,idList',
+      });
+    } catch (error) {
+      this.throwError(`Failed to fetch cards for list ${listName}`, error);
+    }
+  }
+
+  async getEpics(): Promise<TrelloCard[]> {
+    const cards = await this.getCardsInList('Epic');
+
+    return cards.filter((card) =>
+      card.name.trim().toUpperCase().startsWith('EPIC:'),
+    );
+  }
+
+  async createCard(listId: string, name: string, desc = ''): Promise<TrelloCard> {
+    try {
+      return await this.post<TrelloCard>('/cards', {
+        idList: listId,
+        name,
+        desc,
+      });
+    } catch (error) {
+      this.throwError(`Failed to create card: ${name}`, error);
+    }
+  }
+
+  async moveCard(cardId: string, listId: string): Promise<void> {
+    try {
+      await this.put(`/cards/${cardId}`, {
+        idList: listId,
+      });
+    } catch (error) {
+      this.throwError(`Failed to move card ${cardId}`, error);
+    }
+  }
+
+  async addComment(cardId: string, text: string): Promise<void> {
+    try {
+      await this.post(`/cards/${cardId}/actions/comments`, {
+        text,
+      });
+    } catch (error) {
+      this.throwError(`Failed to add comment to card ${cardId}`, error);
+    }
+  }
+
+  async getCardComments(cardId: string): Promise<string[]> {
+    try {
+      const actions = await this.get<TrelloCommentAction[]>(
+        `/cards/${cardId}/actions`,
         {
-          params: {
-            ...this.authParams,
-            idList: list.id,
-          },
+          filter: 'commentCard',
+          fields: 'data,type',
+          limit: 1000,
         },
       );
 
-      this.logger.log(`Card ${cardId} moved to ${listName}`, 'TrelloService');
+      return actions
+        .filter((action) => action.type === 'commentCard')
+        .map((action) => action.data?.text?.trim() ?? '')
+        .filter((text) => text.length > 0);
+    } catch (error) {
+      this.throwError(`Failed to fetch comments for card ${cardId}`, error);
+    }
+  }
+
+  async getListByName(listName: string): Promise<TrelloList | undefined> {
+    const lists = await this.getLists();
+
+    return lists.find(
+      (list) => list.name.trim().toLowerCase() === listName.trim().toLowerCase(),
+    );
+  }
+
+  async getTodoCards(): Promise<TrelloCard[]> {
+    try {
+      return await this.getCardsInList('Todo');
+    } catch (error) {
+      this.handleError('Failed to fetch Todo cards', error);
+      return [];
+    }
+  }
+
+  async moveCardToList(cardId: string, listName: string): Promise<boolean> {
+    try {
+      const list = await this.getListByName(listName);
+
+      if (!list) {
+        this.logger.warn(`Cannot move card. List not found: ${listName}`, 'Trello');
+        return false;
+      }
+
+      await this.moveCard(cardId, list.id);
+      this.logger.log(`Card ${cardId} moved to ${listName}`, 'Trello');
       return true;
     } catch (error) {
       this.handleError(`Failed to move card ${cardId} to ${listName}`, error);
@@ -113,21 +199,24 @@ export class TrelloService {
 
   async addCommentToCard(cardId: string, text: string): Promise<boolean> {
     try {
-      await this.http.post(
-        `/cards/${cardId}/actions/comments`,
-        {},
-        {
-          params: {
-            ...this.authParams,
-            text,
-          },
-        },
-      );
-
+      await this.addComment(cardId, text);
       return true;
     } catch (error) {
       this.handleError(`Failed to add comment to card ${cardId}`, error);
       return false;
+    }
+  }
+
+  private async createList(name: string): Promise<TrelloList> {
+    const { boardId } = this.configService.getTrelloConfig();
+
+    try {
+      return await this.post<TrelloList>(`/boards/${boardId}/lists`, {
+        name,
+        pos: 'bottom',
+      });
+    } catch (error) {
+      this.throwError(`Failed to create list: ${name}`, error);
     }
   }
 
@@ -140,28 +229,61 @@ export class TrelloService {
     };
   }
 
-  private async findListByName(listName: string): Promise<TrelloList | undefined> {
-    const lists = await this.getBoardLists();
+  private async get<T>(url: string, params: Record<string, unknown> = {}): Promise<T> {
+    const response = await this.http.get<T>(url, {
+      params: {
+        ...this.authParams,
+        ...params,
+      },
+    });
 
-    return lists.find(
-      (list) => list.name.trim().toLowerCase() === listName.trim().toLowerCase(),
-    );
+    return response.data;
   }
 
-  private handleError(message: string, error: unknown): void {
+  private async post<T = void>(
+    url: string,
+    params: Record<string, unknown>,
+  ): Promise<T> {
+    const response = await this.http.post<T>(url, null, {
+      params: {
+        ...this.authParams,
+        ...params,
+      },
+    });
+
+    return response.data;
+  }
+
+  private async put(url: string, params: Record<string, unknown>): Promise<void> {
+    await this.http.put(url, null, {
+      params: {
+        ...this.authParams,
+        ...params,
+      },
+    });
+  }
+
+  private throwError(message: string, error: unknown): never {
     if (error instanceof AxiosError) {
       const details = error.response?.data
         ? JSON.stringify(error.response.data)
         : error.message;
-      this.logger.error(`${message}: ${details}`, error.stack, 'TrelloService');
-      return;
+      throw new Error(`${message}: ${details}`);
     }
 
     if (error instanceof Error) {
-      this.logger.error(`${message}: ${error.message}`, error.stack, 'TrelloService');
+      throw new Error(`${message}: ${error.message}`);
+    }
+
+    throw new Error(message);
+  }
+
+  private handleError(message: string, error: unknown): void {
+    if (error instanceof Error) {
+      this.logger.error(`${message}: ${error.message}`, error.stack, 'Trello');
       return;
     }
 
-    this.logger.error(message, undefined, 'TrelloService');
+    this.logger.error(message, undefined, 'Trello');
   }
 }
