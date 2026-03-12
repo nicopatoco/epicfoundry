@@ -86,24 +86,18 @@ export class TrelloService {
     };
   }
 
-  async getCardsInList(listName: string): Promise<TrelloCard[]> {
-    const list = await this.getListByName(listName);
-
-    if (!list) {
-      throw new Error(`Trello list not found: ${listName}`);
-    }
-
+  async getCardsInList(listId: string): Promise<TrelloCard[]> {
     try {
-      return await this.get<TrelloCard[]>(`/lists/${list.id}/cards`, {
+      return await this.get<TrelloCard[]>(`/lists/${listId}/cards`, {
         fields: 'id,name,desc,idList',
       });
     } catch (error) {
-      this.throwError(`Failed to fetch cards for list ${listName}`, error);
+      this.throwError(`Failed to fetch cards for list id ${listId}`, error);
     }
   }
 
   async getEpics(): Promise<TrelloCard[]> {
-    const cards = await this.getCardsInList('Epic');
+    const cards = await this.getCardsInListByName('Epic');
 
     return cards.filter((card) =>
       card.name.trim().toUpperCase().startsWith('EPIC:'),
@@ -142,6 +136,14 @@ export class TrelloService {
     }
   }
 
+  async deleteCard(cardId: string): Promise<void> {
+    try {
+      await this.delete(`/cards/${cardId}`);
+    } catch (error) {
+      this.throwError(`Failed to delete card ${cardId}`, error);
+    }
+  }
+
   async getCardComments(cardId: string): Promise<string[]> {
     try {
       const actions = await this.get<TrelloCommentAction[]>(
@@ -172,7 +174,7 @@ export class TrelloService {
 
   async getTodoCards(): Promise<TrelloCard[]> {
     try {
-      return await this.getCardsInList('Todo');
+      return await this.getCardsInListByName('Todo');
     } catch (error) {
       this.handleError('Failed to fetch Todo cards', error);
       return [];
@@ -220,6 +222,16 @@ export class TrelloService {
     }
   }
 
+  private async getCardsInListByName(listName: string): Promise<TrelloCard[]> {
+    const list = await this.getListByName(listName);
+
+    if (!list) {
+      throw new Error(`Trello list not found: ${listName}`);
+    }
+
+    return this.getCardsInList(list.id);
+  }
+
   private get authParams(): { key: string; token: string } {
     const { apiKey, token } = this.configService.getTrelloConfig();
 
@@ -260,6 +272,12 @@ export class TrelloService {
         ...this.authParams,
         ...params,
       },
+    });
+  }
+
+  private async delete(url: string): Promise<void> {
+    await this.http.delete(url, {
+      params: this.authParams,
     });
   }
 

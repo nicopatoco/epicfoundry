@@ -82,6 +82,8 @@ From `EPIC: User profile editing`, planner generates:
 ```bash
 npm run trello:setup
 npm run trello:plan
+npm run trello:reset
+npm run trello:reset:all
 npm run run:worker
 npm run ai:roles
 npm run ai:test-routing
@@ -90,6 +92,8 @@ npm run ai:test-manual-qa
 
 - `trello:setup`: validates board access, ensures lists, and seeds a sample epic when needed
 - `trello:plan`: reads epic cards and creates generated task cards in `Todo`
+- `trello:reset`: deletes cards from `Todo`, `In Progress`, `Review`, `Done`, and `Failed` (preserves `Epic`)
+- `trello:reset:all`: deletes cards from all lists including `Epic` (requires confirmation)
 - `run:worker`: processes cards in `Todo` and moves them through workflow lists
 - `ai:roles`: prints role -> provider/model policy mappings
 - `ai:test-routing`: runs a mock routing test across all AI roles
@@ -100,6 +104,8 @@ You can also run commands directly:
 ```bash
 npm run start:dev -- setupTrello
 npm run start:dev -- planEpics
+npm run start:dev -- trelloReset
+npm run start:dev -- trelloResetAll
 npm run start:dev -- aiRoles
 npm run start:dev -- aiTestRouting
 npm run start:dev -- aiTestManualQa

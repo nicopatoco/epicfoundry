@@ -1,4 +1,6 @@
 import { NestFactory } from '@nestjs/core';
+import { stdin as input, stdout as output } from 'node:process';
+import { createInterface } from 'node:readline/promises';
 import { AgentPolicyService } from './ai/agent-policy.service';
 import { AgentRouterService } from './ai/agent-router.service';
 import { AppModule } from './app.module';
@@ -14,11 +16,15 @@ type CliCommand =
   | 'setupTrello'
   | 'planEpics'
   | 'runWorker'
+  | 'trelloReset'
+  | 'trelloResetAll'
   | 'aiRoles'
   | 'aiTestRouting'
   | 'aiTestManualQa';
 
 const REQUIRED_LISTS = ['Epic', 'Todo', 'In Progress', 'Review', 'Done', 'Failed'];
+const RESET_LISTS = ['Todo', 'In Progress', 'Review', 'Done', 'Failed'];
+const RESET_ALL_LISTS = ['Epic', ...RESET_LISTS];
 const EPIC_GENERATED_COMMENT = 'EpicFoundry: tasks generated';
 const SAMPLE_EPIC_TITLE = 'EPIC: User profile editing';
 const SAMPLE_EPIC_DESCRIPTION = [
@@ -65,6 +71,14 @@ function resolveCliCommand(args: string[]): CliCommand | null {
     return 'runWorker';
   }
 
+  if (normalized === 'trelloreset') {
+    return 'trelloReset';
+  }
+
+  if (normalized === 'trelloresetall') {
+    return 'trelloResetAll';
+  }
+
   if (normalized === 'airoles') {
     return 'aiRoles';
   }
@@ -81,7 +95,13 @@ function resolveCliCommand(args: string[]): CliCommand | null {
 }
 
 function commandNeedsTrelloConfig(command: CliCommand): boolean {
-  return command === 'setupTrello' || command === 'planEpics' || command === 'runWorker';
+  return (
+    command === 'setupTrello' ||
+    command === 'planEpics' ||
+    command === 'runWorker' ||
+    command === 'trelloReset' ||
+    command === 'trelloResetAll'
+  );
 }
 
 async function runCliCommand(command: CliCommand): Promise<void> {
@@ -118,6 +138,16 @@ async function runCliCommand(command: CliCommand): Promise<void> {
         `Worker finished. Processed=${summary.processed}, Succeeded=${summary.succeeded}, Failed=${summary.failed}`,
         'Worker',
       );
+      return;
+    }
+
+    if (command === 'trelloReset') {
+      await runTrelloReset(app.get(TrelloService), logger, false);
+      return;
+    }
+
+    if (command === 'trelloResetAll') {
+      await runTrelloReset(app.get(TrelloService), logger, true);
       return;
     }
 
@@ -251,6 +281,75 @@ async function runPlanEpics(
   }
 
   logger.log(`Done. Planned=${planned}, Skipped=${skipped}`, 'Plan');
+}
+
+async function runTrelloReset(
+  trelloService: TrelloService,
+  logger: AppLogger,
+  includeEpics: boolean,
+): Promise<void> {
+  logger.log('Cleaning Trello board', 'Reset');
+
+  if (includeEpics) {
+    logger.warn('WARNING: This will delete ALL cards including Epics.', 'Reset');
+    const confirmed = await confirmResetAll();
+
+    if (!confirmed) {
+      logger.log('Reset cancelled. No cards were deleted.', 'Reset');
+      return;
+    }
+  }
+
+  const lists = await trelloService.getLists();
+  const listsByName = new Map(
+    lists.map((list) => [list.name.trim().toLowerCase(), list]),
+  );
+  const targetLists = includeEpics ? RESET_ALL_LISTS : RESET_LISTS;
+
+  let totalDeleted = 0;
+
+  for (const listName of targetLists) {
+    const list = listsByName.get(listName.trim().toLowerCase());
+
+    if (!list) {
+      logger.warn(`List not found: ${listName} (skipping)`, 'Reset');
+      continue;
+    }
+
+    try {
+      const cards = await trelloService.getCardsInList(list.id);
+
+      for (const card of cards) {
+        await trelloService.deleteCard(card.id);
+      }
+
+      totalDeleted += cards.length;
+      logger.log(`Deleted ${cards.length} cards from ${listName}`, 'Reset');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      logger.warn(`Failed to clean list ${listName}: ${message}`, 'Reset');
+    }
+  }
+
+  logger.log(`Board cleaned successfully (total deleted: ${totalDeleted})`, 'Reset');
+}
+
+async function confirmResetAll(): Promise<boolean> {
+  if (!input.isTTY || !output.isTTY) {
+    console.warn(
+      '[Reset] WARNING: Confirmation prompt unavailable (non-interactive mode). Proceeding with reset:all.',
+    );
+    return true;
+  }
+
+  const readline = createInterface({ input, output });
+
+  try {
+    const answer = await readline.question('[Reset] Type "yes" to continue: ');
+    return answer.trim().toLowerCase() === 'yes';
+  } finally {
+    readline.close();
+  }
 }
 
 async function runAiRoles(

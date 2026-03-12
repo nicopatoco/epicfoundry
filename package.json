@@ -23,7 +23,9 @@
     "trello:plan": "nest start -- planEpics",
     "ai:roles": "nest start -- aiRoles",
     "ai:test-routing": "nest start -- aiTestRouting",
-    "ai:test-manual-qa": "nest start -- aiTestManualQa"
+    "ai:test-manual-qa": "nest start -- aiTestManualQa",
+    "trello:reset": "nest start -- trelloReset",
+    "trello:reset:all": "nest start -- trelloResetAll"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
