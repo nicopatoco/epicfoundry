@@ -15,6 +15,8 @@
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:planner": "jest --config ./test/jest-planner.json",
+    "test:refinement": "jest --config ./test/jest-refinement.json",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
@@ -26,7 +28,9 @@
     "ai:test-manual-qa": "nest start -- aiTestManualQa",
     "trello:reset": "nest start -- trelloReset",
     "trello:reset:all": "nest start -- trelloResetAll",
-    "epic:refine": "nest start -- epicRefine"
+    "epic:refine": "nest start -- epicRefine",
+    "epic:inspect": "nest start -- epicInspect",
+    "plan:inspect": "nest start -- planInspect"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

@@ -13,14 +13,17 @@ import { AppLogger } from './common/logger/app-logger.service';
 import { ConfigService } from './config/config.service';
 import { Epic } from './models/epic';
 import { Task } from './models/task';
-import { EpicParser } from './parser/epic-parser';
+import { EpicNormalizerService } from './parser/epic-normalizer.service';
 import { PlannerService } from './planner/planner.service';
+import { formatTaskCardDescription } from './planner/task-card-description.formatter';
 import { TrelloService } from './trello/trello.service';
 import { WorkerService } from './worker/worker.service';
 
 type CliCommand =
   | 'setupTrello'
   | 'planEpics'
+  | 'planInspect'
+  | 'epicInspect'
   | 'epicRefine'
   | 'runWorker'
   | 'trelloReset'
@@ -74,6 +77,14 @@ function resolveCliCommand(args: string[]): CliCommand | null {
     return 'planEpics';
   }
 
+  if (normalized === 'planinspect') {
+    return 'planInspect';
+  }
+
+  if (normalized === 'epicinspect') {
+    return 'epicInspect';
+  }
+
   if (normalized === 'epicrefine') {
     return 'epicRefine';
   }
@@ -109,6 +120,8 @@ function commandNeedsTrelloConfig(command: CliCommand): boolean {
   return (
     command === 'setupTrello' ||
     command === 'planEpics' ||
+    command === 'planInspect' ||
+    command === 'epicInspect' ||
     command === 'epicRefine' ||
     command === 'runWorker' ||
     command === 'trelloReset' ||
@@ -135,9 +148,29 @@ async function runCliCommand(command: CliCommand): Promise<void> {
     if (command === 'planEpics') {
       await runPlanEpics(
         app.get(TrelloService),
-        app.get(EpicParser),
+        app.get(EpicNormalizerService),
         app.get(PlannerService),
         app.get(RefinedEpicParserService),
+        logger,
+      );
+      return;
+    }
+
+    if (command === 'planInspect') {
+      await runPlanInspect(
+        app.get(TrelloService),
+        app.get(EpicNormalizerService),
+        app.get(PlannerService),
+        app.get(RefinedEpicParserService),
+        logger,
+      );
+      return;
+    }
+
+    if (command === 'epicInspect') {
+      await runEpicInspect(
+        app.get(TrelloService),
+        app.get(EpicNormalizerService),
         logger,
       );
       return;
@@ -146,7 +179,7 @@ async function runCliCommand(command: CliCommand): Promise<void> {
     if (command === 'epicRefine') {
       await runEpicRefine(
         app.get(TrelloService),
-        app.get(EpicParser),
+        app.get(EpicNormalizerService),
         app.get(EpicRefinerService),
         logger,
       );
@@ -246,7 +279,7 @@ async function runSetupTrello(
 
 async function runPlanEpics(
   trelloService: TrelloService,
-  epicParser: EpicParser,
+  epicNormalizer: EpicNormalizerService,
   plannerService: PlannerService,
   refinedEpicParser: RefinedEpicParserService,
   logger: AppLogger,
@@ -269,9 +302,13 @@ async function runPlanEpics(
   let skipped = 0;
 
   for (const epicCard of epics) {
-    const parsedEpic = epicParser.parseFromCard(epicCard.name, epicCard.desc);
+    const canonicalEpic = epicNormalizer.normalizeEpic({
+      id: epicCard.id,
+      name: epicCard.name,
+      desc: epicCard.desc,
+    });
 
-    if (!parsedEpic) {
+    if (!canonicalEpic.title.trim()) {
       skipped += 1;
       logger.warn(`Skipping invalid epic card: ${epicCard.name}`, 'Plan');
       continue;
@@ -283,7 +320,7 @@ async function runPlanEpics(
       logger.log(`Using RefinedEpic JSON for ${refinedEpic.title}`, 'Plan');
     } else {
       logger.warn(
-        `No RefinedEpic JSON found for ${parsedEpic.title}; using derived fallback input`,
+        `No RefinedEpic JSON found for ${canonicalEpic.title}; using derived fallback input`,
         'Plan',
       );
     }
@@ -293,21 +330,29 @@ async function runPlanEpics(
 
     if (alreadyPlanned) {
       skipped += 1;
-      logger.log(`Skipping already planned epic: ${parsedEpic.title}`, 'Plan');
+      logger.log(`Skipping already planned epic: ${canonicalEpic.title}`, 'Plan');
       continue;
     }
 
-    logger.log(`Planning epic: ${parsedEpic.title}`, 'Plan');
-    const refinedEpicInput = refinedEpic ?? buildRefinedEpicFromEpic(parsedEpic);
+    logger.log(`Planning epic: ${canonicalEpic.title}`, 'Plan');
+    logger.log('Creating Task objects from RefinedEpic', 'Plan');
+    const refinedEpicInput = refinedEpic ?? buildRefinedEpicFromEpic(canonicalEpic);
     const tasks = await plannerService.generateTasksFromRefinedEpic(refinedEpicInput);
 
     for (const task of tasks) {
+      const taskCard: Task = {
+        ...task,
+        epicTitle: canonicalEpic.title,
+        sourceEpicCardId: epicCard.id,
+      };
+      const cardTitle = `${canonicalEpic.title} — ${taskCard.title}`;
+
       await trelloService.createCard(
         todoList.id,
-        task.title,
-        formatTaskCardDescription(task),
+        cardTitle,
+        formatTaskCardDescription(taskCard),
       );
-      logger.log(`Created task: ${task.title}`, 'Plan');
+      logger.log(`Created task: ${cardTitle}`, 'Plan');
     }
 
     await trelloService.addComment(epicCard.id, EPIC_GENERATED_COMMENT);
@@ -317,9 +362,86 @@ async function runPlanEpics(
   logger.log(`Done. Planned=${planned}, Skipped=${skipped}`, 'Plan');
 }
 
+async function runEpicInspect(
+  trelloService: TrelloService,
+  epicNormalizer: EpicNormalizerService,
+  logger: AppLogger,
+): Promise<void> {
+  const epics = await trelloService.getEpics();
+  logger.log(`Found ${epics.length} epic${epics.length === 1 ? '' : 's'}`, 'Inspect');
+
+  if (epics.length === 0) {
+    logger.log('Done', 'Inspect');
+    return;
+  }
+
+  for (const epicCard of epics) {
+    const canonicalEpic = epicNormalizer.normalizeEpic({
+      id: epicCard.id,
+      name: epicCard.name,
+      desc: epicCard.desc,
+    });
+
+    logger.log(`Epic: ${canonicalEpic.title}`, 'Inspect');
+    logger.log(
+      `Parsing mode: ${canonicalEpic.parsingMode ?? 'heuristic'}`,
+      'Inspect',
+    );
+    logger.log(`Goal: ${canonicalEpic.goal ?? 'N/A'}`, 'Inspect');
+    logger.log(`Scope: ${canonicalEpic.scope?.length ?? 0} items`, 'Inspect');
+    logger.log(
+      `Out of scope: ${canonicalEpic.outOfScope?.length ?? 0} items`,
+      'Inspect',
+    );
+  }
+}
+
+async function runPlanInspect(
+  trelloService: TrelloService,
+  epicNormalizer: EpicNormalizerService,
+  plannerService: PlannerService,
+  refinedEpicParser: RefinedEpicParserService,
+  logger: AppLogger,
+): Promise<void> {
+  const epics = await trelloService.getEpics();
+  logger.log(
+    `Found ${epics.length} epic${epics.length === 1 ? '' : 's'}`,
+    'PlanInspect',
+  );
+
+  if (epics.length === 0) {
+    logger.log('Done', 'PlanInspect');
+    return;
+  }
+
+  for (const epicCard of epics) {
+    const canonicalEpic = epicNormalizer.normalizeEpic({
+      id: epicCard.id,
+      name: epicCard.name,
+      desc: epicCard.desc,
+    });
+
+    const comments = await trelloService.getCardComments(epicCard.id);
+    const refinedEpic = refinedEpicParser.parseFromComments(comments);
+    const refinedEpicInput = refinedEpic ?? buildRefinedEpicFromEpic(canonicalEpic);
+
+    logger.log(`Epic: ${canonicalEpic.title}`, 'PlanInspect');
+    logger.log(
+      `Using refined input: ${refinedEpic ? 'comment JSON' : 'derived fallback'}`,
+      'PlanInspect',
+    );
+
+    const tasks = await plannerService.generateTasksFromRefinedEpic(refinedEpicInput);
+    logger.log(`Generated ${tasks.length} task object(s)`, 'PlanInspect');
+    logger.log(`Tasks JSON:\n${JSON.stringify(tasks, null, 2)}`, 'PlanInspect');
+  }
+
+  logger.log('Done', 'PlanInspect');
+}
+
 async function runEpicRefine(
   trelloService: TrelloService,
-  epicParser: EpicParser,
+  epicNormalizer: EpicNormalizerService,
   epicRefiner: EpicRefinerService,
   logger: AppLogger,
 ): Promise<void> {
@@ -335,9 +457,13 @@ async function runEpicRefine(
   let skippedCount = 0;
 
   for (const epicCard of epics) {
-    const parsedEpic = epicParser.parseFromCard(epicCard.name, epicCard.desc);
+    const canonicalEpic = epicNormalizer.normalizeEpic({
+      id: epicCard.id,
+      name: epicCard.name,
+      desc: epicCard.desc,
+    });
 
-    if (!parsedEpic) {
+    if (!canonicalEpic.title.trim()) {
       skippedCount += 1;
       logger.warn(`Skipping invalid epic card: ${epicCard.name}`, 'Refine');
       continue;
@@ -350,12 +476,13 @@ async function runEpicRefine(
 
     if (alreadyRefined) {
       skippedCount += 1;
-      logger.log(`Skipping epic (already refined): ${parsedEpic.title}`, 'Refine');
+      logger.log(`Skipping epic (already refined): ${canonicalEpic.title}`, 'Refine');
       continue;
     }
 
-    logger.log(`Analyzing epic: ${parsedEpic.title}`, 'Refine');
-    const refinement = await epicRefiner.refineEpic(parsedEpic);
+    logger.log(`Using canonical Epic: ${canonicalEpic.title}`, 'Refine');
+    logger.log(`Analyzing epic: ${canonicalEpic.title}`, 'Refine');
+    const refinement = await epicRefiner.refineEpic(canonicalEpic);
     const comment = formatRefinementComment(refinement);
 
     await trelloService.addComment(epicCard.id, comment);
@@ -503,40 +630,40 @@ function ensureTrelloConfig(configService: ConfigService): void {
   configService.getTrelloConfig();
 }
 
-function formatTaskCardDescription(task: Task): string {
-  const acceptance = task.acceptance.map((item) => `- ${item}`).join('\n');
-
-  return [
-    `Type: ${task.type}`,
-    `Epic: ${task.epicTitle}`,
-    '',
-    'Goal:',
-    task.goal,
-    '',
-    'Acceptance:',
-    acceptance,
-  ].join('\n');
-}
-
 function buildRefinedEpicFromEpic(epic: Epic): RefinedEpic {
-  const summary =
-    epic.goal.trim().length > 0
-      ? epic.goal.trim()
-      : `Feature delivery for ${epic.title}.`;
+  const summary = epic.goal?.trim().length
+    ? epic.goal.trim()
+    : `Feature delivery for ${epic.title}.`;
+
+  const scopeIn =
+    epic.scope && epic.scope.length > 0
+      ? [...epic.scope]
+      : ['Implement core feature flow', 'Validate primary user action'];
+
+  const acceptanceCriteria =
+    epic.acceptance && epic.acceptance.length > 0
+      ? [...epic.acceptance]
+      : ['Primary user flow is implemented and verified'];
 
   return {
     title: epic.title,
     summary,
-    scopeIn:
-      epic.scope.length > 0
-        ? [...epic.scope]
-        : ['Implement core feature flow', 'Validate primary user action'],
-    scopeOut: ['Advanced integrations', 'Non-critical enhancements'],
+    scopeIn,
+    scopeOut:
+      epic.outOfScope && epic.outOfScope.length > 0
+        ? [...epic.outOfScope]
+        : ['Advanced integrations', 'Non-critical enhancements'],
+    assumptions:
+      epic.constraints && epic.constraints.length > 0
+        ? [...epic.constraints]
+        : ['Assume existing project setup remains unchanged'],
     openQuestions:
-      epic.acceptance.length > 0
-        ? epic.acceptance.map((item) => `How should we verify: ${item}?`)
+      acceptanceCriteria.length > 0
+        ? acceptanceCriteria.map((item) => `How should we verify: ${item}?`)
         : ['What are the exact acceptance criteria for V1?'],
+    acceptanceCriteria,
     recommendedApproach: `Deliver a small vertical slice for ${epic.title} first, then iterate.`,
+    readyToPlan: scopeIn.length > 0 && acceptanceCriteria.length > 0,
   };
 }
 

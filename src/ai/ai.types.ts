@@ -1,3 +1,5 @@
+import type { RefinedEpic } from '../models/refined-epic';
+
 export type AgentRole =
   | 'epic_planner'
   | 'backend_worker'
@@ -42,9 +44,11 @@ export interface PlanEpicInput {
 
 export interface PlannedTask {
   title: string;
-  type: 'backend' | 'frontend' | 'fullstack' | 'qa';
+  type: 'backend' | 'frontend' | 'fullstack' | 'qa' | 'contract';
   goal: string;
+  scope: string[];
   acceptance: string[];
+  sourceRefs: string[];
 }
 
 export interface TaskExecutionInput {
@@ -96,22 +100,4 @@ export interface ReviewResult {
   comments: string[];
 }
 
-export interface RefinedEpic {
-  title: string;
-  summary: string;
-  scopeIn: string[];
-  scopeOut: string[];
-  openQuestions: string[];
-  recommendedApproach: string;
-}
-
-export interface EpicRefinementResult {
-  summary: string;
-  suggestedScope: {
-    in: string[];
-    out: string[];
-  };
-  openQuestions: string[];
-  recommendedApproach: string;
-  refinedEpic: RefinedEpic;
-}
+export type { RefinedEpic };

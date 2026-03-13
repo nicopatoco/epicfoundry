@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RefinedEpic } from '../ai.types';
+import { RefinedEpic, refinedEpicSchema } from '../../models/refined-epic';
 import { REFINED_EPIC_JSON_HEADER } from './refinement.constants';
 
 @Injectable()
@@ -23,19 +23,14 @@ export class RefinedEpicParserService {
     }
 
     try {
-      const parsed = JSON.parse(jsonPayload) as Partial<RefinedEpic>;
-      if (!this.isValidRefinedEpic(parsed)) {
+      const raw = JSON.parse(jsonPayload);
+      const validated = refinedEpicSchema.safeParse(raw);
+
+      if (!validated.success) {
         return null;
       }
 
-      return {
-        title: parsed.title.trim(),
-        summary: parsed.summary.trim(),
-        scopeIn: parsed.scopeIn.map((item) => item.trim()),
-        scopeOut: parsed.scopeOut.map((item) => item.trim()),
-        openQuestions: parsed.openQuestions.map((item) => item.trim()),
-        recommendedApproach: parsed.recommendedApproach.trim(),
-      };
+      return validated.data;
     } catch {
       return null;
     }
@@ -56,19 +51,5 @@ export class RefinedEpicParserService {
     }
 
     return match[1].trim();
-  }
-
-  private isValidRefinedEpic(payload: Partial<RefinedEpic>): payload is RefinedEpic {
-    return (
-      typeof payload.title === 'string' &&
-      typeof payload.summary === 'string' &&
-      Array.isArray(payload.scopeIn) &&
-      payload.scopeIn.every((item) => typeof item === 'string') &&
-      Array.isArray(payload.scopeOut) &&
-      payload.scopeOut.every((item) => typeof item === 'string') &&
-      Array.isArray(payload.openQuestions) &&
-      payload.openQuestions.every((item) => typeof item === 'string') &&
-      typeof payload.recommendedApproach === 'string'
-    );
   }
 }

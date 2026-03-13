@@ -10,7 +10,7 @@ Pipeline:
 
 - Reads Epic cards from Trello (cards that start with `EPIC:`)
 - Parses Epic descriptions into structured data
-- Generates default implementation tasks from each epic
+- Generates content-driven implementation tasks from each refined epic
 - Runs a worker loop that processes Trello tasks from `Todo`
 - Moves cards through `In Progress`, then to `Review` or `Failed`
 
@@ -70,19 +70,22 @@ Acceptance:
 
 ## Example generated tasks
 
-From `EPIC: User profile editing`, planner generates:
+From `EPIC: User profile editing`, planner may generate:
 
 - `User profile editing — API contract`
-- `User profile editing — Backend endpoint`
-- `User profile editing — Frontend form`
-- `User profile editing — E2E verification`
+- `User profile editing — Profile read endpoint`
+- `User profile editing — Profile update endpoint`
+- `User profile editing — Profile form UI`
+- `User profile editing — Flow verification`
 
 ## CLI commands
 
 ```bash
 npm run trello:setup
 npm run trello:plan
+npm run epic:inspect
 npm run epic:refine
+npm run plan:inspect
 npm run trello:reset
 npm run trello:reset:all
 npm run run:worker
@@ -93,7 +96,9 @@ npm run ai:test-manual-qa
 
 - `trello:setup`: validates board access, ensures lists, and seeds a sample epic when needed
 - `trello:plan`: reads epic cards and creates generated task cards in `Todo`
+- `epic:inspect`: reads Epic cards and prints canonical normalized Epic data
 - `epic:refine`: analyzes epics and posts a refinement proposal comment before planning (human-readable plus embedded `RefinedEpic` JSON)
+- `plan:inspect`: runs planner synthesis for epics and prints generated `Task` objects without creating Trello cards
 - `trello:reset`: deletes cards from `Todo`, `In Progress`, `Review`, `Done`, and `Failed` (preserves `Epic`)
 - `trello:reset:all`: deletes cards from all lists including `Epic` (requires confirmation)
 - `run:worker`: processes cards in `Todo` and moves them through workflow lists
@@ -106,7 +111,9 @@ You can also run commands directly:
 ```bash
 npm run start:dev -- setupTrello
 npm run start:dev -- planEpics
+npm run start:dev -- epicInspect
 npm run start:dev -- epicRefine
+npm run start:dev -- planInspect
 npm run start:dev -- trelloReset
 npm run start:dev -- trelloResetAll
 npm run start:dev -- aiRoles

@@ -1,15 +1,15 @@
-import { EpicRefinementResult } from '../ai.types';
+import { RefinedEpic } from '../../models/refined-epic';
 import {
   REFINED_EPIC_JSON_HEADER,
   REFINEMENT_GENERATED_MARKER,
 } from './refinement.constants';
 
-export function formatRefinementComment(result: EpicRefinementResult): string {
-  const inScope = result.suggestedScope.in.map((item) => `- ${item}`).join('\n');
-  const outOfScope = result.suggestedScope.out
-    .map((item) => `- ${item}`)
-    .join('\n');
-  const openQuestions = result.openQuestions
+export function formatRefinementComment(refinedEpic: RefinedEpic): string {
+  const inScope = refinedEpic.scopeIn.map((item) => `- ${item}`).join('\n');
+  const outOfScope = refinedEpic.scopeOut.map((item) => `- ${item}`).join('\n');
+  const assumptions = refinedEpic.assumptions.map((item) => `- ${item}`).join('\n');
+  const openQuestions = refinedEpic.openQuestions.map((item) => `- ${item}`).join('\n');
+  const acceptance = refinedEpic.acceptanceCriteria
     .map((item) => `- ${item}`)
     .join('\n');
 
@@ -17,24 +17,32 @@ export function formatRefinementComment(result: EpicRefinementResult): string {
     'EpicFoundry refinement proposal',
     '',
     'Summary:',
-    result.summary,
+    refinedEpic.summary,
     '',
     'Suggested scope (V1):',
     inScope,
     '',
-    'Out of scope for V1:',
+    'Out of scope:',
     outOfScope,
+    '',
+    'Assumptions:',
+    assumptions,
     '',
     'Open questions:',
     openQuestions,
     '',
-    'Recommended V1 approach:',
-    result.recommendedApproach,
+    'Acceptance criteria:',
+    acceptance,
+    '',
+    'Recommended approach:',
+    refinedEpic.recommendedApproach,
+    '',
+    `Ready to plan: ${refinedEpic.readyToPlan ? 'yes' : 'no'}`,
     '',
     REFINED_EPIC_JSON_HEADER,
     '',
     '```json',
-    JSON.stringify(result.refinedEpic, null, 2),
+    JSON.stringify(refinedEpic, null, 2),
     '```',
     '',
     REFINEMENT_GENERATED_MARKER,
