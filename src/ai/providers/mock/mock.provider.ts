@@ -69,18 +69,16 @@ export class MockAnthropicProvider extends BaseMockProvider {
 
       const tasks: PlannedTask[] = [
         {
-          title: `${epicTitle} - API contract`,
-          type: 'api-contract',
+          title: `${epicTitle} - Backend contract`,
+          type: 'backend',
           goal: `Define API contract for ${epicTitle}`,
           acceptance: ['Request and response schema documented'],
-          epicTitle,
         },
         {
           title: `${epicTitle} - Frontend form`,
-          type: 'frontend-form',
+          type: 'frontend',
           goal: `Implement frontend form for ${epicTitle}`,
           acceptance: ['Form validates and submits user data'],
-          epicTitle,
         },
       ];
 

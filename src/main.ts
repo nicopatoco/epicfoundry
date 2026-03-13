@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { stdin as input, stdout as output } from 'node:process';
 import { createInterface } from 'node:readline/promises';
+import { RefinedEpic } from './ai/ai.types';
 import { AgentPolicyService } from './ai/agent-policy.service';
 import { AgentRouterService } from './ai/agent-router.service';
 import { EpicRefinerService } from './ai/refiner/epic-refiner.service';
@@ -10,6 +11,7 @@ import { formatRefinementComment } from './ai/refiner/refinement-comment.formatt
 import { AppModule } from './app.module';
 import { AppLogger } from './common/logger/app-logger.service';
 import { ConfigService } from './config/config.service';
+import { Epic } from './models/epic';
 import { Task } from './models/task';
 import { EpicParser } from './parser/epic-parser';
 import { PlannerService } from './planner/planner.service';
@@ -278,7 +280,12 @@ async function runPlanEpics(
     const comments = await trelloService.getCardComments(epicCard.id);
     const refinedEpic = refinedEpicParser.parseFromComments(comments);
     if (refinedEpic) {
-      logger.log(`RefinedEpic detected for ${refinedEpic.title}`, 'Plan');
+      logger.log(`Using RefinedEpic JSON for ${refinedEpic.title}`, 'Plan');
+    } else {
+      logger.warn(
+        `No RefinedEpic JSON found for ${parsedEpic.title}; using derived fallback input`,
+        'Plan',
+      );
     }
     const alreadyPlanned = comments.some((comment) =>
       comment.includes(EPIC_GENERATED_COMMENT),
@@ -291,7 +298,8 @@ async function runPlanEpics(
     }
 
     logger.log(`Planning epic: ${parsedEpic.title}`, 'Plan');
-    const tasks = plannerService.generateTasksFromEpic(parsedEpic);
+    const refinedEpicInput = refinedEpic ?? buildRefinedEpicFromEpic(parsedEpic);
+    const tasks = await plannerService.generateTasksFromRefinedEpic(refinedEpicInput);
 
     for (const task of tasks) {
       await trelloService.createCard(
@@ -508,6 +516,28 @@ function formatTaskCardDescription(task: Task): string {
     'Acceptance:',
     acceptance,
   ].join('\n');
+}
+
+function buildRefinedEpicFromEpic(epic: Epic): RefinedEpic {
+  const summary =
+    epic.goal.trim().length > 0
+      ? epic.goal.trim()
+      : `Feature delivery for ${epic.title}.`;
+
+  return {
+    title: epic.title,
+    summary,
+    scopeIn:
+      epic.scope.length > 0
+        ? [...epic.scope]
+        : ['Implement core feature flow', 'Validate primary user action'],
+    scopeOut: ['Advanced integrations', 'Non-critical enhancements'],
+    openQuestions:
+      epic.acceptance.length > 0
+        ? epic.acceptance.map((item) => `How should we verify: ${item}?`)
+        : ['What are the exact acceptance criteria for V1?'],
+    recommendedApproach: `Deliver a small vertical slice for ${epic.title} first, then iterate.`,
+  };
 }
 
 void bootstrap();

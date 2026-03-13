@@ -1,12 +1,82 @@
 import { Injectable } from '@nestjs/common';
+import { AgentPolicyService } from '../ai/agent-policy.service';
+import { AnthropicPlannerProvider } from '../ai/providers/planner/anthropic-planner.provider';
+import { PlannedTask, RefinedEpic } from '../ai/ai.types';
+import { AppLogger } from '../common/logger/app-logger.service';
 import { Epic } from '../models/epic';
-import { Task } from '../models/task';
+import { Task, TaskType } from '../models/task';
 
 @Injectable()
 export class PlannerService {
-  generateTasksFromEpic(epic: Epic): Task[] {
-    const epicTitle = epic.title;
+  constructor(
+    private readonly agentPolicyService: AgentPolicyService,
+    private readonly anthropicPlannerProvider: AnthropicPlannerProvider,
+    private readonly logger: AppLogger,
+  ) {}
 
+  async generateTasksFromRefinedEpic(refinedEpic: RefinedEpic): Promise<Task[]> {
+    try {
+      this.logger.log('Using AI planner provider', 'Planner');
+      const aiTasks = await this.generateTasksWithProvider(refinedEpic);
+      this.logger.log(`Generated ${aiTasks.length} tasks`, 'Planner');
+
+      return aiTasks.map((task) => this.toTask(task, refinedEpic.title));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown planner error';
+      this.logger.warn(`AI planner failed - using fallback planner (${message})`, 'Planner');
+      return this.generateFallbackTasks(refinedEpic.title);
+    }
+  }
+
+  generateTasksFromEpic(epic: Epic): Task[] {
+    return this.generateFallbackTasks(epic.title);
+  }
+
+  planTasks(epic: Epic): Task[] {
+    return this.generateTasksFromEpic(epic);
+  }
+
+  planTasksFromEpics(epics: Epic[]): Task[] {
+    return epics.flatMap((epic) => this.generateTasksFromEpic(epic));
+  }
+
+  private async generateTasksWithProvider(refinedEpic: RefinedEpic): Promise<PlannedTask[]> {
+    const policy = this.agentPolicyService.getPolicyForRole('epic_planner');
+
+    if (policy.provider === 'anthropic') {
+      return this.anthropicPlannerProvider.planEpic(refinedEpic);
+    }
+
+    throw new Error(`Planner provider is not implemented for ${policy.provider}`);
+  }
+
+  private toTask(plannedTask: PlannedTask, epicTitle: string): Task {
+    return {
+      title: plannedTask.title,
+      type: this.toTaskType(plannedTask.type),
+      goal: plannedTask.goal,
+      acceptance: [...plannedTask.acceptance],
+      epicTitle,
+    };
+  }
+
+  private toTaskType(type: PlannedTask['type']): TaskType {
+    if (type === 'backend') {
+      return 'backend-endpoint';
+    }
+
+    if (type === 'frontend') {
+      return 'frontend-form';
+    }
+
+    if (type === 'qa') {
+      return 'e2e-verification';
+    }
+
+    return 'generic';
+  }
+
+  private generateFallbackTasks(epicTitle: string): Task[] {
     return [
       {
         title: `${epicTitle} — API contract`,
@@ -37,13 +107,5 @@ export class PlannerService {
         epicTitle,
       },
     ];
-  }
-
-  planTasks(epic: Epic): Task[] {
-    return this.generateTasksFromEpic(epic);
-  }
-
-  planTasksFromEpics(epics: Epic[]): Task[] {
-    return epics.flatMap((epic) => this.generateTasksFromEpic(epic));
   }
 }

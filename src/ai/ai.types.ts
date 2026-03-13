@@ -42,10 +42,9 @@ export interface PlanEpicInput {
 
 export interface PlannedTask {
   title: string;
-  type: string;
+  type: 'backend' | 'frontend' | 'fullstack' | 'qa';
   goal: string;
   acceptance: string[];
-  epicTitle: string;
 }
 
 export interface TaskExecutionInput {
