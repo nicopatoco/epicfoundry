@@ -126,6 +126,14 @@ export class TrelloService {
     }
   }
 
+  async updateCardDescription(cardId: string, desc: string): Promise<void> {
+    try {
+      await this.put(`/cards/${cardId}`, { desc });
+    } catch (error) {
+      this.throwError(`Failed to update card description for ${cardId}`, error);
+    }
+  }
+
   async addComment(cardId: string, text: string): Promise<void> {
     try {
       await this.post(`/cards/${cardId}/actions/comments`, {

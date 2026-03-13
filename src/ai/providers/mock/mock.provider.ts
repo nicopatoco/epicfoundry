@@ -26,14 +26,28 @@ export class MockOpenAIProvider extends BaseMockProvider {
   readonly name = 'openai';
 
   supportsRole(role: AgentRole): boolean {
-    return role === 'backend_worker';
+    return role === 'backend_worker' || role === 'epic_normalizer';
   }
 
   supportsCapability(capability: Capability): boolean {
-    return ['implement', 'edit_code', 'run_terminal'].includes(capability);
+    return ['normalize_epic', 'implement', 'edit_code', 'run_terminal'].includes(
+      capability,
+    );
   }
 
   async executeMock(role: AgentRole): Promise<unknown> {
+    if (role === 'epic_normalizer') {
+      return {
+        title: 'Mock normalized epic',
+        goal: 'Mock goal',
+        context: ['mock context'],
+        scope: ['mock scope'],
+        outOfScope: [],
+        constraints: [],
+        acceptance: ['mock acceptance'],
+      };
+    }
+
     if (role !== 'backend_worker') {
       throw new Error(`Provider ${this.name} does not support role ${role}`);
     }

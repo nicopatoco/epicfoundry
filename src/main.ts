@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline/promises';
 import { RefinedEpic } from './ai/ai.types';
 import { AgentPolicyService } from './ai/agent-policy.service';
 import { AgentRouterService } from './ai/agent-router.service';
+import { EpicNormalizationWorkflowService } from './ai/normalizer/epic-normalization-workflow.service';
 import { EpicRefinerService } from './ai/refiner/epic-refiner.service';
 import { RefinedEpicParserService } from './ai/refiner/refined-epic-parser.service';
 import { REFINEMENT_GENERATED_MARKER } from './ai/refiner/refinement.constants';
@@ -23,6 +24,7 @@ type CliCommand =
   | 'setupTrello'
   | 'planEpics'
   | 'planInspect'
+  | 'epicNormalize'
   | 'epicInspect'
   | 'epicRefine'
   | 'runWorker'
@@ -81,6 +83,10 @@ function resolveCliCommand(args: string[]): CliCommand | null {
     return 'planInspect';
   }
 
+  if (normalized === 'epicnormalize') {
+    return 'epicNormalize';
+  }
+
   if (normalized === 'epicinspect') {
     return 'epicInspect';
   }
@@ -121,6 +127,7 @@ function commandNeedsTrelloConfig(command: CliCommand): boolean {
     command === 'setupTrello' ||
     command === 'planEpics' ||
     command === 'planInspect' ||
+    command === 'epicNormalize' ||
     command === 'epicInspect' ||
     command === 'epicRefine' ||
     command === 'runWorker' ||
@@ -138,6 +145,12 @@ async function runCliCommand(command: CliCommand): Promise<void> {
   try {
     if (commandNeedsTrelloConfig(command)) {
       ensureTrelloConfig(app.get(ConfigService));
+    }
+
+    if (command === 'epicNormalize') {
+      ensureOpenAiNormalizerConfig(app.get(ConfigService));
+      await runEpicNormalize(app.get(EpicNormalizationWorkflowService), logger);
+      return;
     }
 
     if (command === 'setupTrello') {
@@ -360,6 +373,17 @@ async function runPlanEpics(
   }
 
   logger.log(`Done. Planned=${planned}, Skipped=${skipped}`, 'Plan');
+}
+
+async function runEpicNormalize(
+  workflowService: EpicNormalizationWorkflowService,
+  logger: AppLogger,
+): Promise<void> {
+  const summary = await workflowService.run();
+  logger.log(
+    `Done. Normalized=${summary.normalized}, Skipped=${summary.skipped}, Failed=${summary.failed}`,
+    'Normalize',
+  );
 }
 
 async function runEpicInspect(
@@ -628,6 +652,10 @@ async function runAiTestManualQa(
 
 function ensureTrelloConfig(configService: ConfigService): void {
   configService.getTrelloConfig();
+}
+
+function ensureOpenAiNormalizerConfig(configService: ConfigService): void {
+  configService.getOpenAiEpicNormalizerConfig();
 }
 
 function buildRefinedEpicFromEpic(epic: Epic): RefinedEpic {

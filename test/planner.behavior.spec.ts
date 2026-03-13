@@ -4,10 +4,11 @@ import { PlannerService } from '../src/planner/planner.service';
 import { AnthropicPlannerProvider } from '../src/ai/providers/planner/anthropic-planner.provider';
 import { AppLogger } from '../src/common/logger/app-logger.service';
 import { Task } from '../src/models/task';
+import { ConfigService } from '../src/config/config.service';
 
 function createPlanner(): PlannerService {
   const logger = new AppLogger();
-  const policy = new AgentPolicyService();
+  const policy = new AgentPolicyService(new ConfigService());
   const provider = new AnthropicPlannerProvider(logger);
 
   return new PlannerService(policy, provider, logger);

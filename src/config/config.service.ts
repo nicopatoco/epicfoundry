@@ -30,4 +30,16 @@ export class ConfigService {
       boardId: this.getOrThrow('TRELLO_BOARD_ID'),
     };
   }
+
+  getOpenAiEpicNormalizerConfig(): {
+    apiKey: string;
+    model: string;
+  } {
+    const model = this.get('OPENAI_MODEL_EPIC_NORMALIZER')?.trim() || 'gpt-5.3-codex';
+
+    return {
+      apiKey: this.getOrThrow('OPENAI_API_KEY'),
+      model,
+    };
+  }
 }

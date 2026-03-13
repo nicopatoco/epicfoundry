@@ -2,6 +2,12 @@ import { AgentRole, RolePolicy } from './ai.types';
 
 export const DEFAULT_ROLE_POLICIES: RolePolicy[] = [
   {
+    role: 'epic_normalizer',
+    provider: 'openai',
+    model: 'gpt-5.3-codex',
+    capabilities: ['normalize_epic'],
+  },
+  {
     role: 'epic_planner',
     provider: 'anthropic',
     model: 'claude-opus-4.6',
@@ -40,6 +46,7 @@ export const DEFAULT_ROLE_POLICIES: RolePolicy[] = [
 ];
 
 export const ALL_AGENT_ROLES: AgentRole[] = [
+  'epic_normalizer',
   'epic_planner',
   'backend_worker',
   'frontend_worker',

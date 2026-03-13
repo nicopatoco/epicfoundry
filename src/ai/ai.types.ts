@@ -1,6 +1,7 @@
 import type { RefinedEpic } from '../models/refined-epic';
 
 export type AgentRole =
+  | 'epic_normalizer'
   | 'epic_planner'
   | 'backend_worker'
   | 'frontend_worker'
@@ -13,6 +14,7 @@ export type ProviderName = 'openai' | 'anthropic' | 'browser' | 'playwright';
 export type ModelName = string;
 
 export type Capability =
+  | 'normalize_epic'
   | 'plan'
   | 'implement'
   | 'edit_code'
