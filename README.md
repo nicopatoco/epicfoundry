@@ -93,7 +93,7 @@ npm run ai:test-manual-qa
 
 - `trello:setup`: validates board access, ensures lists, and seeds a sample epic when needed
 - `trello:plan`: reads epic cards and creates generated task cards in `Todo`
-- `epic:refine`: analyzes epics and posts a refinement proposal comment before planning
+- `epic:refine`: analyzes epics and posts a refinement proposal comment before planning (human-readable plus embedded `RefinedEpic` JSON)
 - `trello:reset`: deletes cards from `Todo`, `In Progress`, `Review`, `Done`, and `Failed` (preserves `Epic`)
 - `trello:reset:all`: deletes cards from all lists including `Epic` (requires confirmation)
 - `run:worker`: processes cards in `Todo` and moves them through workflow lists

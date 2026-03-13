@@ -28,6 +28,8 @@ export class EpicRefinerService {
       'Can customers reschedule appointments?',
     ];
 
+    const recommendedApproach = `Start with a simple ${epic.title.toLowerCase()} flow for a single professional.`;
+
     return {
       summary,
       suggestedScope: {
@@ -35,7 +37,15 @@ export class EpicRefinerService {
         out: outOfScope,
       },
       openQuestions,
-      recommendedApproach: `Start with a simple ${epic.title.toLowerCase()} flow for a single professional.`,
+      recommendedApproach,
+      refinedEpic: {
+        title: epic.title,
+        summary,
+        scopeIn: inScope,
+        scopeOut: outOfScope,
+        openQuestions,
+        recommendedApproach,
+      },
     };
   }
 

@@ -4,6 +4,8 @@ import { createInterface } from 'node:readline/promises';
 import { AgentPolicyService } from './ai/agent-policy.service';
 import { AgentRouterService } from './ai/agent-router.service';
 import { EpicRefinerService } from './ai/refiner/epic-refiner.service';
+import { RefinedEpicParserService } from './ai/refiner/refined-epic-parser.service';
+import { REFINEMENT_GENERATED_MARKER } from './ai/refiner/refinement.constants';
 import { formatRefinementComment } from './ai/refiner/refinement-comment.formatter';
 import { AppModule } from './app.module';
 import { AppLogger } from './common/logger/app-logger.service';
@@ -29,7 +31,6 @@ const REQUIRED_LISTS = ['Epic', 'Todo', 'In Progress', 'Review', 'Done', 'Failed
 const RESET_LISTS = ['Todo', 'In Progress', 'Review', 'Done', 'Failed'];
 const RESET_ALL_LISTS = ['Epic', ...RESET_LISTS];
 const EPIC_GENERATED_COMMENT = 'EpicFoundry: tasks generated';
-const EPIC_REFINEMENT_COMMENT = 'EpicFoundry: refinement generated';
 const SAMPLE_EPIC_TITLE = 'EPIC: User profile editing';
 const SAMPLE_EPIC_DESCRIPTION = [
   'Goal:',
@@ -134,6 +135,7 @@ async function runCliCommand(command: CliCommand): Promise<void> {
         app.get(TrelloService),
         app.get(EpicParser),
         app.get(PlannerService),
+        app.get(RefinedEpicParserService),
         logger,
       );
       return;
@@ -244,6 +246,7 @@ async function runPlanEpics(
   trelloService: TrelloService,
   epicParser: EpicParser,
   plannerService: PlannerService,
+  refinedEpicParser: RefinedEpicParserService,
   logger: AppLogger,
 ): Promise<void> {
   const epics = await trelloService.getEpics();
@@ -273,6 +276,10 @@ async function runPlanEpics(
     }
 
     const comments = await trelloService.getCardComments(epicCard.id);
+    const refinedEpic = refinedEpicParser.parseFromComments(comments);
+    if (refinedEpic) {
+      logger.log(`RefinedEpic detected for ${refinedEpic.title}`, 'Plan');
+    }
     const alreadyPlanned = comments.some((comment) =>
       comment.includes(EPIC_GENERATED_COMMENT),
     );
@@ -330,7 +337,7 @@ async function runEpicRefine(
 
     const comments = await trelloService.getCardComments(epicCard.id);
     const alreadyRefined = comments.some((comment) =>
-      comment.includes(EPIC_REFINEMENT_COMMENT),
+      comment.includes(REFINEMENT_GENERATED_MARKER),
     );
 
     if (alreadyRefined) {

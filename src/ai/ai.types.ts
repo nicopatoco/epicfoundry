@@ -97,6 +97,15 @@ export interface ReviewResult {
   comments: string[];
 }
 
+export interface RefinedEpic {
+  title: string;
+  summary: string;
+  scopeIn: string[];
+  scopeOut: string[];
+  openQuestions: string[];
+  recommendedApproach: string;
+}
+
 export interface EpicRefinementResult {
   summary: string;
   suggestedScope: {
@@ -105,4 +114,5 @@ export interface EpicRefinementResult {
   };
   openQuestions: string[];
   recommendedApproach: string;
+  refinedEpic: RefinedEpic;
 }

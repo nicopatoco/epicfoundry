@@ -1,4 +1,8 @@
 import { EpicRefinementResult } from '../ai.types';
+import {
+  REFINED_EPIC_JSON_HEADER,
+  REFINEMENT_GENERATED_MARKER,
+} from './refinement.constants';
 
 export function formatRefinementComment(result: EpicRefinementResult): string {
   const inScope = result.suggestedScope.in.map((item) => `- ${item}`).join('\n');
@@ -27,6 +31,12 @@ export function formatRefinementComment(result: EpicRefinementResult): string {
     'Recommended V1 approach:',
     result.recommendedApproach,
     '',
-    'EpicFoundry: refinement generated',
+    REFINED_EPIC_JSON_HEADER,
+    '',
+    '```json',
+    JSON.stringify(result.refinedEpic, null, 2),
+    '```',
+    '',
+    REFINEMENT_GENERATED_MARKER,
   ].join('\n');
 }
