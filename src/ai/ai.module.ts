@@ -7,6 +7,7 @@ import {
   MockOpenAIProvider,
   MockPlaywrightProvider,
 } from './providers/mock/mock.provider';
+import { EpicRefinerService } from './refiner/epic-refiner.service';
 
 @Module({
   providers: [
@@ -16,7 +17,8 @@ import {
     MockAnthropicProvider,
     MockBrowserProvider,
     MockPlaywrightProvider,
+    EpicRefinerService,
   ],
-  exports: [AgentPolicyService, AgentRouterService],
+  exports: [AgentPolicyService, AgentRouterService, EpicRefinerService],
 })
 export class AiModule {}

@@ -25,7 +25,8 @@
     "ai:test-routing": "nest start -- aiTestRouting",
     "ai:test-manual-qa": "nest start -- aiTestManualQa",
     "trello:reset": "nest start -- trelloReset",
-    "trello:reset:all": "nest start -- trelloResetAll"
+    "trello:reset:all": "nest start -- trelloResetAll",
+    "epic:refine": "nest start -- epicRefine"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

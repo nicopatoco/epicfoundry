@@ -96,3 +96,13 @@ export interface ReviewResult {
   summary: string;
   comments: string[];
 }
+
+export interface EpicRefinementResult {
+  summary: string;
+  suggestedScope: {
+    in: string[];
+    out: string[];
+  };
+  openQuestions: string[];
+  recommendedApproach: string;
+}

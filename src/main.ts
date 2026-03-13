@@ -3,6 +3,8 @@ import { stdin as input, stdout as output } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { AgentPolicyService } from './ai/agent-policy.service';
 import { AgentRouterService } from './ai/agent-router.service';
+import { EpicRefinerService } from './ai/refiner/epic-refiner.service';
+import { formatRefinementComment } from './ai/refiner/refinement-comment.formatter';
 import { AppModule } from './app.module';
 import { AppLogger } from './common/logger/app-logger.service';
 import { ConfigService } from './config/config.service';
@@ -15,6 +17,7 @@ import { WorkerService } from './worker/worker.service';
 type CliCommand =
   | 'setupTrello'
   | 'planEpics'
+  | 'epicRefine'
   | 'runWorker'
   | 'trelloReset'
   | 'trelloResetAll'
@@ -26,6 +29,7 @@ const REQUIRED_LISTS = ['Epic', 'Todo', 'In Progress', 'Review', 'Done', 'Failed
 const RESET_LISTS = ['Todo', 'In Progress', 'Review', 'Done', 'Failed'];
 const RESET_ALL_LISTS = ['Epic', ...RESET_LISTS];
 const EPIC_GENERATED_COMMENT = 'EpicFoundry: tasks generated';
+const EPIC_REFINEMENT_COMMENT = 'EpicFoundry: refinement generated';
 const SAMPLE_EPIC_TITLE = 'EPIC: User profile editing';
 const SAMPLE_EPIC_DESCRIPTION = [
   'Goal:',
@@ -67,6 +71,10 @@ function resolveCliCommand(args: string[]): CliCommand | null {
     return 'planEpics';
   }
 
+  if (normalized === 'epicrefine') {
+    return 'epicRefine';
+  }
+
   if (normalized === 'runworker') {
     return 'runWorker';
   }
@@ -98,6 +106,7 @@ function commandNeedsTrelloConfig(command: CliCommand): boolean {
   return (
     command === 'setupTrello' ||
     command === 'planEpics' ||
+    command === 'epicRefine' ||
     command === 'runWorker' ||
     command === 'trelloReset' ||
     command === 'trelloResetAll'
@@ -125,6 +134,16 @@ async function runCliCommand(command: CliCommand): Promise<void> {
         app.get(TrelloService),
         app.get(EpicParser),
         app.get(PlannerService),
+        logger,
+      );
+      return;
+    }
+
+    if (command === 'epicRefine') {
+      await runEpicRefine(
+        app.get(TrelloService),
+        app.get(EpicParser),
+        app.get(EpicRefinerService),
         logger,
       );
       return;
@@ -281,6 +300,55 @@ async function runPlanEpics(
   }
 
   logger.log(`Done. Planned=${planned}, Skipped=${skipped}`, 'Plan');
+}
+
+async function runEpicRefine(
+  trelloService: TrelloService,
+  epicParser: EpicParser,
+  epicRefiner: EpicRefinerService,
+  logger: AppLogger,
+): Promise<void> {
+  const epics = await trelloService.getEpics();
+  logger.log(`Found ${epics.length} epic${epics.length === 1 ? '' : 's'}`, 'Refine');
+
+  if (epics.length === 0) {
+    logger.log('Done', 'Refine');
+    return;
+  }
+
+  let refinedCount = 0;
+  let skippedCount = 0;
+
+  for (const epicCard of epics) {
+    const parsedEpic = epicParser.parseFromCard(epicCard.name, epicCard.desc);
+
+    if (!parsedEpic) {
+      skippedCount += 1;
+      logger.warn(`Skipping invalid epic card: ${epicCard.name}`, 'Refine');
+      continue;
+    }
+
+    const comments = await trelloService.getCardComments(epicCard.id);
+    const alreadyRefined = comments.some((comment) =>
+      comment.includes(EPIC_REFINEMENT_COMMENT),
+    );
+
+    if (alreadyRefined) {
+      skippedCount += 1;
+      logger.log(`Skipping epic (already refined): ${parsedEpic.title}`, 'Refine');
+      continue;
+    }
+
+    logger.log(`Analyzing epic: ${parsedEpic.title}`, 'Refine');
+    const refinement = await epicRefiner.refineEpic(parsedEpic);
+    const comment = formatRefinementComment(refinement);
+
+    await trelloService.addComment(epicCard.id, comment);
+    logger.log('Posted refinement comment', 'Refine');
+    refinedCount += 1;
+  }
+
+  logger.log(`Done. Refined=${refinedCount}, Skipped=${skippedCount}`, 'Refine');
 }
 
 async function runTrelloReset(
